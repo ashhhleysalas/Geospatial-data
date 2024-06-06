@@ -1,0 +1,163 @@
+---
+title: "Geospatial data"
+format: "html"
+author: "Ashly Salas"
+
+---
+
+```{r}
+# Carga de paquetes
+library(tidyverse)
+library(DT)
+library(sf)
+library(terra)
+library(leaflet)
+library(leaflet.extras)
+library(leafem)
+library(dplyr)
+
+```
+
+```{r}
+#| warning: false
+#| message: false
+cantones <-
+  st_read(
+    dsn = "cantones_2020.geojson",
+    quiet = TRUE
+  )
+```
+
+```{r}
+
+#| label: carga-datos
+#| warning: false
+#| message: false
+# Carga de datos de casos positivos de COVID-19 en cantones de Costa Rica
+# El argumento file debe tener la ruta al archivo de datos
+covid_positivos_cantones <-
+  read_delim(
+    file = "05_30_22_CSV_POSITIVOS.csv",
+    delim = ";",
+    locale = locale(encoding = "WINDOWS-1252"), # para desplegar correctamente acentos y otros caracteres
+    col_select = c("cod_provin", "provincia", "cod_canton", "canton", "30/05/2022") # 30/05/2022 contiene los datos para la última fecha disponible
+)
+
+# Se remueve la fila con canton == "Otros"
+covid_positivos_cantones <-
+  covid_positivos_cantones |>
+  filter(canton != "Otros")
+
+# Cambio de nombre de columnas
+covid_positivos_cantones <-
+  covid_positivos_cantones %>%
+  rename(positivos_20220530 = '30/05/2022')
+
+```
+
+## st(filter)
+
+```{r}
+#| warning: false
+#| message: false
+# Selección de columnas canton, area (renombrada a area_km2) y provincia
+cantones |>
+  head(10) |> # para mostrar solo las 10 primeras filas
+  st_drop_geometry() |> # para remover la columna de geometrías
+  dplyr::select(canton, area_km2 = area, provincia)
+
+```
+
+## group_by()
+
+```{r}
+#| warning: false
+#| message: false
+cantones |>
+  st_drop_geometry() |>
+  select(canton, provincia, area) |>
+  group_by(provincia) |>
+  summarize(area_provincia = sum(area)) |>
+  view()
+```
+
+## Funcion join()
+
+```{r}
+#| warning: false
+#| message: false
+cantones_union_covid <-
+  cantones |>
+  left_join(
+    select(covid_positivos_cantones, cod_canton, positivos_20220530),
+    by = "cod_canton" 
+  )
+```
+
+# Mapa leaflet de casos positivos de covid en cantones
+
+```{r}
+colores_cantones_union_covid <-
+  colorNumeric(
+    palette = "Reds",
+    domain = cantones_union_covid$positivos_20220530,
+    na.color = "transparent"
+  )
+
+leaflet() |>
+  setView(lng = -84, lat = 10, zoom = 5) |>
+  addTiles(group = "OSM") |>
+  addPolygons(
+    data = st_transform(cantones_union_covid, 4326),
+    fillColor = ~ colores_cantones_union_covid(cantones_union_covid$positivos_20220530),
+    fillOpacity = 0.8,
+    color = "black",
+    weight = 1.5,
+   popup = (paste(
+      paste(
+        "<strong>Cantón:</strong>", cantones_union_covid$canton))),
+      stroke = TRUE
+  ) |>
+  
+ addLegend(
+    position = "bottomleft",
+    pal = colores_cantones_union_covid,
+    values = cantones_union_covid$positivos_20220530,
+    group = "Casos positivos al 2022-05-30",
+    title = "Cantidad de casos"
+  ) 
+```
+
+# Analisis de Covid por provincia
+
+data frame con la suma por provincia de casos positivos de cantones (para realizar la agrupacion use el codigo de la provincia, no el nombre)
+
+```{r}
+#| label: analisis-covid-x-provincia
+#| warning: false
+#| message: false
+
+cantones_union_covid |>
+  st_drop_geometry() |>
+select(provincia, positivos_20220530) |>
+  group_by(provincia) |>
+  summarize(casos_positivos_covid = sum(positivos_20220530))
+ 
+```
+
+# Lectura de la capa provincias
+
+```{r}
+#| label: lectura-provincias
+#| warning: false
+#| message: false
+
+provincias <-
+  st_read("provincias_2020.geojson", quiet = TRUE)
+
+
+
+
+
+```
+
